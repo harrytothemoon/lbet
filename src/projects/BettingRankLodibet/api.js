@@ -70,22 +70,22 @@ export const lodibetAPI = {
 
       // Check actual response structure: { errorCode, success, value }
       if (response && response.success && response.value) {
-        // Calculate total bet amount from the response (use betAmount for Lodibet)
+        // Calculate total bet amount from the response (use validBetAmount for Lodibet)
         let totalValidBet = 0;
 
         const apiResult = response.value;
 
-        if (apiResult.data && Array.isArray(apiResult.data)) {
-          totalValidBet = apiResult.data.reduce((sum, record) => {
-            return sum + (parseFloat(record.betAmount) || 0);
+        if (apiResult.dataList && Array.isArray(apiResult.dataList)) {
+          totalValidBet = apiResult.dataList.reduce((sum, record) => {
+            return sum + (parseFloat(record.validBetAmount) || 0);
           }, 0);
         }
 
         return {
           success: true,
           totalValidBet: totalValidBet,
-          data: apiResult.data || [],
-          total: apiResult.total || 0,
+          data: apiResult.dataList || [],
+          total: apiResult.pagination?.totalCount || 0,
           username: username,
         };
       } else {
