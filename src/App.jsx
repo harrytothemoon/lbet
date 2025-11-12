@@ -15,7 +15,7 @@ import BettingRankHawk from './projects/BettingRankHawk';
 
 const App = () => {
   return (
-    <Router basename="/lottery">
+    <Router basename="/">
       <Routes>
         <Route path="/lawin" element={<Lawin />} />
         <Route path="/lodibet" element={<Lodibet />} />
