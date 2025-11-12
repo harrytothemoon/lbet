@@ -41,7 +41,7 @@ jobs:
           REACT_APP_HAWK_PROXY_URL: ${{ secrets.REACT_APP_HAWK_PROXY_URL }}
           REACT_APP_LODIBET_PROXY_URL: ${{ secrets.REACT_APP_LODIBET_PROXY_URL }}
           # 设置 PUBLIC_URL 为 GitHub Pages 路径
-          PUBLIC_URL: /lottery
+          PUBLIC_URL: /
         run: yarn build
 
       - name: 配置 GitHub Pages
