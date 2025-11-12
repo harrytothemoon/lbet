@@ -17,14 +17,8 @@ const App = () => {
   return (
     <Router basename="/">
       <Routes>
-        <Route path="/lawin" element={<Lawin />} />
-        <Route path="/lodibet" element={<Lodibet />} />
-        <Route path="/integrate" element={<Integrate />} />
-        <Route path="/naseebet" element={<Naseebet />} />
-        <Route path="/progress" element={<ProgressDraw />} />
         <Route path="/betting-rank-lodibet" element={<BettingRankLodibet />} />
-        <Route path="/betting-rank-hawk" element={<BettingRankHawk />} />
-        <Route path="*" element={<Navigate to="/lawin" replace />} />
+        <Route path="*" element={<Navigate to="/betting-rank-lodibet" replace />} />
       </Routes>
     </Router>
   );
