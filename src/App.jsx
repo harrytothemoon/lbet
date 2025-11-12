@@ -5,13 +5,7 @@ import {
   Route,
   Navigate,
 } from 'react-router-dom';
-import Lawin from './projects/Lawin';
-import Lodibet from './projects/Lodibet';
-import Integrate from './projects/Integrate';
-import Naseebet from './projects/Naseebet';
-import ProgressDraw from './projects/ProgressDraw';
 import BettingRankLodibet from './projects/BettingRankLodibet';
-import BettingRankHawk from './projects/BettingRankHawk';
 
 const App = () => {
   return (
