@@ -46,57 +46,101 @@ export const lodibetAPI = {
   },
 
   // Get player bet details (for current week real-time data)
+  // 支持分页，自动获取所有页的数据
   async getPlayerBetDetail(
     username,
     startTime,
     endTime,
     gameTypeList = [1, 2, 3, 4],
     pageNum = 1,
-    pageSize = 1000
+    pageSize = 2500 // 使用最大页面大小减少请求次数
   ) {
     try {
-      // Build request body
-      const body = {
+      // 第一步：获取第一页数据，确定总页数
+      const firstPageBody = {
         username,
         gameTypeList,
         startTime,
         endTime,
-        pageNum,
+        pageNum: 1,
         pageSize,
       };
 
-      // 直接使用 post 方法，代理服务器会处理认证
-      const response = await this.post("/bet-detail", body);
+      const firstResponse = await this.post("/bet-detail", firstPageBody);
 
-      // Check actual response structure: { errorCode, success, value }
-      if (response && response.success && response.value) {
-        // Calculate total bet amount from the response (use validBetAmount for Lodibet)
-        let totalValidBet = 0;
-
-        const apiResult = response.value;
-
-        if (apiResult.dataList && Array.isArray(apiResult.dataList)) {
-          totalValidBet = apiResult.dataList.reduce((sum, record) => {
-            return sum + (parseFloat(record.validBetAmount) || 0);
-          }, 0);
-        }
-
-        return {
-          success: true,
-          totalValidBet: totalValidBet,
-          data: apiResult.dataList || [],
-          total: apiResult.pagination?.totalCount || 0,
-          username: username,
-        };
-      } else {
-        // Player not found or no data
-        console.warn("No betting data found in response:", response);
+      if (!firstResponse || !firstResponse.success || !firstResponse.value) {
+        console.warn("No betting data found in response:", firstResponse);
         return {
           success: false,
           error: "Player not found or no betting data",
           totalValidBet: 0,
         };
       }
+
+      const firstPageResult = firstResponse.value;
+      const totalPages = firstPageResult.pagination?.totalPage || 1;
+
+      // 如果只有一页，直接返回
+      if (totalPages === 1) {
+        const validBet = (firstPageResult.dataList || []).reduce(
+          (sum, record) => sum + (parseFloat(record.validBetAmount) || 0),
+          0
+        );
+        return {
+          success: true,
+          totalValidBet: validBet,
+          data: firstPageResult.dataList || [],
+          total: firstPageResult.dataList?.length || 0,
+          username: username,
+        };
+      }
+
+      // 第二步：并行请求剩余所有页
+      const remainingPages = Array.from(
+        { length: totalPages - 1 },
+        (_, i) => i + 2
+      );
+
+      const remainingRequests = remainingPages.map((pageNum) =>
+        this.post("/bet-detail", {
+          username,
+          gameTypeList,
+          startTime,
+          endTime,
+          pageNum,
+          pageSize,
+        })
+      );
+
+      // 并行执行所有请求
+      const remainingResponses = await Promise.all(remainingRequests);
+
+      // 第三步：汇总所有数据
+      let allData = firstPageResult.dataList || [];
+      let totalValidBet = allData.reduce(
+        (sum, record) => sum + (parseFloat(record.validBetAmount) || 0),
+        0
+      );
+
+      // 累加其他页的数据
+      remainingResponses.forEach((response) => {
+        if (response && response.success && response.value?.dataList) {
+          const pageData = response.value.dataList;
+          allData = allData.concat(pageData);
+          totalValidBet += pageData.reduce(
+            (sum, record) => sum + (parseFloat(record.validBetAmount) || 0),
+            0
+          );
+        }
+      });
+
+      return {
+        success: true,
+        totalValidBet: totalValidBet,
+        data: allData,
+        total: allData.length,
+        username: username,
+      };
     } catch (error) {
       console.error("Failed to fetch player bet details:", error);
       return {

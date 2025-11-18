@@ -9,14 +9,15 @@ module.exports = function (app) {
       target: "https://www.ldb789.com",
       changeOrigin: true,
       pathRewrite: {
-        "^/api/lodibet": "/expose_api",
+        "^/api/lodibet": "/expose_api/player",
       },
-      onProxyReq: (proxyReq, req, res) => {
-        // Log proxy requests for debugging
-        console.log("Proxying Lodibet request:", req.method, req.path);
-      },
-      onError: (err, req, res) => {
-        console.error("Proxy error:", err);
+      onProxyReq(proxyReq, req, res) {
+        // Add authentication headers - 与生产环境 Nginx 配置一致
+        proxyReq.setHeader("Host", "www.ldb789.com");
+        proxyReq.setHeader("merchantCode", "lodibet");
+        proxyReq.setHeader("token", process.env.REACT_APP_LODIBET_API_TOKEN);
+        proxyReq.setHeader("lang", "EN");
+        proxyReq.setHeader("Content-Type", "application/json");
       },
     })
   );
@@ -30,14 +31,9 @@ module.exports = function (app) {
       pathRewrite: {
         "^/api/hawk": "/api/v5",
       },
-      onProxyReq: (proxyReq, req, res) => {
-        // Add Hawk API headers
+      onProxyReq(proxyReq, req, res) {
         proxyReq.setHeader("PARTNER", "HAW");
         proxyReq.setHeader("SECRET", process.env.REACT_APP_HAWK_API_SECRET);
-        console.log("Proxying Hawk request:", req.method, req.path);
-      },
-      onError: (err, req, res) => {
-        console.error("Proxy error:", err);
       },
     })
   );

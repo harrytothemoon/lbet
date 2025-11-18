@@ -396,7 +396,14 @@ const BettingRankLodibet = () => {
           );
 
           if (apiResult.success) {
-            safeSetItem(playerApiCacheKey, JSON.stringify(apiResult));
+            // 只缓存计算结果，不缓存原始数据以节省空间
+            const cacheData = {
+              success: apiResult.success,
+              totalValidBet: apiResult.totalValidBet,
+              total: apiResult.total,
+              username: apiResult.username,
+            };
+            safeSetItem(playerApiCacheKey, JSON.stringify(cacheData));
             safeSetItem(playerApiCacheTimeKey, Date.now().toString());
           }
         }
@@ -715,7 +722,14 @@ const BettingRankLodibet = () => {
           );
 
           if (apiResult.success) {
-            safeSetItem(playerApiCacheKey, JSON.stringify(apiResult));
+            // 只缓存计算结果，不缓存原始数据以节省空间
+            const cacheData = {
+              success: apiResult.success,
+              totalValidBet: apiResult.totalValidBet,
+              total: apiResult.total,
+              username: apiResult.username,
+            };
+            safeSetItem(playerApiCacheKey, JSON.stringify(cacheData));
             safeSetItem(playerApiCacheTimeKey, Date.now().toString());
           }
         }
