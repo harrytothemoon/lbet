@@ -35,11 +35,11 @@ const useFavicon = () => {
       },
       "betting-rank-lodibet": {
         favicon: `${process.env.PUBLIC_URL}/BettingRankLodibet/favicon.ico`,
-        title: "Lodibet - Weekly Betting Rankings",
+        title: "LODIBET 2025 BERMONTH Festival",
       },
       "betting-rank-hawk": {
         favicon: `${process.env.PUBLIC_URL}/BettingRankHawk/favicon.ico`,
-        title: "HawkPlay - Weekly Betting Rankings",
+        title: "HAWKPLAY 2025 BERMONTH Festival",
       },
     };
 
