@@ -29,9 +29,9 @@ export const CONFIG = {
     subtitle: "Earn Points Win Amazing Rewards",
     description:
       "Let's welcome the Ber Months with festive cheer! Place your bets, earn points, and win exciting Christmas gifts. Make this holiday season one you'll never forget! 🎁",
-    startDate: "2025-11-13",
+    startDate: "2025-11-20",
     endDate: "2025-12-31",
-    totalWeeks: 7,
+    totalWeeks: 6,
   },
 
   // API 通过 AWS Lightsail + Cloudflare Tunnel 代理
@@ -42,33 +42,33 @@ export const CONFIG = {
     {
       rank: 1,
       prize: "🥇 1st Place",
-      reward: "iPhone 17 Pro Max (512 GB) + 200,000 Points",
+      reward: "iPhone 17 Pro Max (512 GB) + ₱200,000",
     },
     {
       rank: 2,
       prize: "🥈 2nd Place",
-      reward: "iPhone 17 Pro Max (512 GB) + 80,000 Points",
+      reward: "iPhone 17 Pro Max (512 GB) + ₱80,000",
     },
     {
       rank: 3,
       prize: "🥉 3rd Place",
-      reward: "iPhone 17 Pro Max (512 GB) + 50,000 Points",
+      reward: "iPhone 17 Pro Max (512 GB) + ₱50,000",
     },
     {
       rank: "4-10",
       prize: "📱 4th-10th Place",
-      reward: "iPhone 17 + 10,000 Points",
+      reward: "iPhone 17 + ₱10,000",
     },
-    { rank: "11-50", prize: "🎁 11th-50th Place", reward: "10,000 Points" },
-    { rank: "51-100", prize: "🎉 51st-100th Place", reward: "8,000 Points" },
-    { rank: "101-200", prize: "💎 101st-200th Place", reward: "6,000 Points" },
-    { rank: "201-300", prize: "⭐ 201st-300th Place", reward: "4,000 Points" },
-    { rank: "301-400", prize: "🌟 301st-400th Place", reward: "3,000 Points" },
-    { rank: "401-500", prize: "✨ 401st-500th Place", reward: "2,000 Points" },
+    { rank: "11-50", prize: "🎁 11th-50th Place", reward: "₱10,000" },
+    { rank: "51-100", prize: "🎉 51st-100th Place", reward: "₱8,000" },
+    { rank: "101-200", prize: "💎 101st-200th Place", reward: "₱6,000" },
+    { rank: "201-300", prize: "⭐ 201st-300th Place", reward: "₱4,000" },
+    { rank: "301-400", prize: "🌟 301st-400th Place", reward: "₱3,000" },
+    { rank: "401-500", prize: "✨ 401st-500th Place", reward: "₱2,000" },
     {
       rank: "501-1000",
       prize: "🎊 501st-1000th Place",
-      reward: "1,000 Points",
+      reward: "₱1,000",
     },
   ],
 
@@ -79,12 +79,12 @@ export const CONFIG = {
       content:
         "Each week, a total of 2,000,000 points will be shared among all players. Your earned points depend on your share of the total weekly slot bets.",
       example:
-        "Example: If you bet 1,000,000 from Nov 10–16, and the total site bets are 10,000,000, you will receive: 2,000,000 × (1,000,000 ÷ 10,000,000) = 200,000 points",
+        "Example: If you bet ₱1,000,000 from Nov 20–26, and the total site bets are ₱10,000,000, you will receive: 2,000,000 × (1,000,000 ÷ 10,000,000) = 200,000 points",
     },
     {
       title: "Event Duration & Rewards",
       content:
-        "The event runs for 7 weeks. Your total accumulated points will determine your rank, and you'll receive exclusive Christmas gifts based on your final position.",
+        "The event runs for 6 weeks. Your total accumulated points will determine your rank, and you'll receive exclusive Christmas gifts based on your final position.",
     },
   ],
 
@@ -113,36 +113,31 @@ export const GOOGLE_SHEETS_CONFIG = {
 
   WEEK_PERIODS: {
     1: {
-      start: "2025-11-13 00:00:00",
-      end: "2025-11-19 23:59:59",
-      pointsPool: WEEK_POINTS_POOL,
-    },
-    2: {
       start: "2025-11-20 00:00:00",
       end: "2025-11-26 23:59:59",
       pointsPool: WEEK_POINTS_POOL,
     },
-    3: {
+    2: {
       start: "2025-11-27 00:00:00",
       end: "2025-12-03 23:59:59",
       pointsPool: WEEK_POINTS_POOL,
     },
-    4: {
+    3: {
       start: "2025-12-04 00:00:00",
       end: "2025-12-10 23:59:59",
       pointsPool: WEEK_POINTS_POOL,
     },
-    5: {
+    4: {
       start: "2025-12-11 00:00:00",
       end: "2025-12-17 23:59:59",
       pointsPool: WEEK_POINTS_POOL,
     },
-    6: {
+    5: {
       start: "2025-12-18 00:00:00",
       end: "2025-12-24 23:59:59",
       pointsPool: WEEK_POINTS_POOL,
     },
-    7: {
+    6: {
       start: "2025-12-25 00:00:00",
       end: "2025-12-31 23:59:59",
       pointsPool: WEEK_POINTS_POOL,
@@ -162,7 +157,7 @@ export const GOOGLE_SHEETS_CONFIG = {
 // Get current week number based on current time
 export const getCurrentWeek = () => {
   const now = new Date();
-  for (let week = 1; week <= 7; week++) {
+  for (let week = 1; week <= 6; week++) {
     const period = GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[week];
     const start = new Date(period.start);
     const end = new Date(period.end);
