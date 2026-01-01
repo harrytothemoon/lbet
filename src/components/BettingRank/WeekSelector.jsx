@@ -9,6 +9,7 @@ const WeekSelector = ({
   onWeekChange,
   getWeekStatus,
   weekPeriods,
+  isActivityEnded,
 }) => {
   const { SITE, ACTIVITY } = config;
 
@@ -107,7 +108,7 @@ const WeekSelector = ({
                 >
                   {getWeekDateRange(week)}
                 </span>
-                {isCurrent && !isDisabled && (
+                {isCurrent && !isDisabled && !isActivityEnded && (
                   <span
                     className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-bold mt-0.5"
                     style={{
@@ -120,7 +121,7 @@ const WeekSelector = ({
                     LIVE
                   </span>
                 )}
-                {isEnded && !isCurrent && (
+                {(isEnded || (isCurrent && isActivityEnded)) && (
                   <span
                     className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-bold mt-0.5"
                     style={{
@@ -139,7 +140,7 @@ const WeekSelector = ({
                   </span>
                 )}
               </span>
-              {isCurrent && !isDisabled && (
+              {isCurrent && !isDisabled && !isActivityEnded && (
                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse"></span>
               )}
             </Button>

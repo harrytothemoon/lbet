@@ -17,6 +17,7 @@ const WeeklyRanking = ({
   weekPeriods,
   onTotalRankingClick, // New prop for total ranking
   isTotalRanking, // New prop to indicate if showing total ranking
+  isActivityEnded, // New prop to check if activity has ended
 }) => {
   const { SITE, ACTIVITY } = config;
   const weekTabsRef = useRef(null);
@@ -149,10 +150,18 @@ const WeeklyRanking = ({
               Christmas Champion Leaderboard
             </span>
           </CardTitle>
-          <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm">
-            <span className="text-white text-sm font-semibold">Live</span>
-            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-          </div>
+          {!isActivityEnded && (
+            <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm">
+              <span className="text-white text-sm font-semibold">Live</span>
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            </div>
+          )}
+          {isActivityEnded && (
+            <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm">
+              <span className="text-white text-sm font-semibold">Ended</span>
+              <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+            </div>
+          )}
         </div>
       </CardHeader>
       <CardContent className="p-0">
@@ -298,7 +307,7 @@ const WeeklyRanking = ({
                         >
                           {getWeekDateRange(week)}
                         </span>
-                        {isCurrent && !isDisabled && (
+                        {isCurrent && !isDisabled && !isActivityEnded && (
                           <span
                             className="text-[10px] px-2 py-0.5 rounded-full font-bold"
                             style={{
@@ -311,7 +320,7 @@ const WeeklyRanking = ({
                             LIVE
                           </span>
                         )}
-                        {isEnded && !isCurrent && (
+                        {(isEnded || (isCurrent && isActivityEnded)) && (
                           <span
                             className="text-[10px] px-2 py-0.5 rounded-full font-bold"
                             style={{
@@ -330,7 +339,7 @@ const WeeklyRanking = ({
                           </span>
                         )}
                       </div>
-                      {isCurrent && !isDisabled && (
+                      {isCurrent && !isDisabled && !isActivityEnded && (
                         <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse"></span>
                       )}
                     </button>
@@ -441,7 +450,7 @@ const WeeklyRanking = ({
       </CardContent>
 
       {/* Hide scrollbar CSS */}
-      <style jsx>{`
+      <style>{`
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
         }

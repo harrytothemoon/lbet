@@ -5,6 +5,7 @@ import {
   GOOGLE_SHEETS_CONFIG,
   getCurrentWeek,
   getWeekStatus,
+  isActivityEnded,
 } from "./config";
 import { googleSheetsAPI } from "./googleSheets";
 import { lodibetAPI, formatDate } from "./api";
@@ -89,9 +90,16 @@ const BettingRankLodibet = () => {
     return nextUpdate.getTime();
   };
 
-  // Check if Sheet cache is still valid (daily cache)
+  // Check if Sheet cache is still valid (daily cache during activity, permanent after)
   const isSheetCacheValid = useCallback((cacheTime) => {
     if (!cacheTime) return false;
+
+    // If activity has ended, cache is always valid (data won't change)
+    if (isActivityEnded()) {
+      return true;
+    }
+
+    // During activity: daily cache
     const nextUpdateTime = getNextDailyUpdateTime();
     const cacheTimestamp = parseInt(cacheTime);
     // Cache is valid if it was created after the last daily update
@@ -109,6 +117,99 @@ const BettingRankLodibet = () => {
     return Date.now() - parseInt(cacheTime) < API_CACHE_DURATION;
   }, []);
 
+  // Fetch multiple weeks data with cache optimization
+  const fetchMultipleWeeksWithCache = useCallback(
+    async (weekNumbers) => {
+      const allWeeksData = {};
+      const weeksToFetch = [];
+
+      // First, try to get from cache
+      for (const weekNum of weekNumbers) {
+        const cacheKey = `lodibet_sheet_week_${weekNum}`;
+        const cacheTimeKey = `lodibet_sheet_time_week_${weekNum}`;
+
+        const cachedData = localStorage.getItem(cacheKey);
+        const cachedTime = localStorage.getItem(cacheTimeKey);
+
+        if (cachedData && cachedTime && isSheetCacheValid(cachedTime)) {
+          // Use cached data - now includes full result (rankings + totalBetAmount)
+          const weekResult = JSON.parse(cachedData);
+          allWeeksData[weekNum] = weekResult;
+          console.log(`[MultiWeek] Using cache for week ${weekNum}`);
+        } else {
+          // Need to fetch
+          weeksToFetch.push(weekNum);
+        }
+      }
+
+      // Fetch missing weeks
+      if (weeksToFetch.length > 0) {
+        console.log(`[MultiWeek] Fetching weeks: ${weeksToFetch.join(", ")}`);
+        for (const weekNum of weeksToFetch) {
+          const gid = GOOGLE_SHEETS_CONFIG.WEEK_GIDS[weekNum];
+          const pointsPool =
+            GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[weekNum].pointsPool;
+
+          if (gid !== undefined) {
+            const result = await googleSheetsAPI.fetchWeekRankings(
+              GOOGLE_SHEETS_CONFIG.SHEET_ID,
+              gid,
+              pointsPool
+            );
+
+            allWeeksData[weekNum] = result;
+
+            // Cache the complete result (including totalBetAmount, weeklyPointsPool)
+            const cacheKey = `lodibet_sheet_week_${weekNum}`;
+            const cacheTimeKey = `lodibet_sheet_time_week_${weekNum}`;
+            safeSetItem(cacheKey, JSON.stringify(result));
+            safeSetItem(cacheTimeKey, Date.now().toString());
+          }
+        }
+      }
+
+      return allWeeksData;
+    },
+    [isSheetCacheValid]
+  );
+
+  // Fetch player complete data (activity ended) - single cache for all weeks
+  const fetchPlayerCompleteData = useCallback(
+    async (playerId) => {
+      const completeCacheKey = `lodibet_player_complete_${playerId}`;
+
+      // Check if complete cache exists
+      try {
+        const cachedComplete = localStorage.getItem(completeCacheKey);
+        if (cachedComplete) {
+          console.log(`[Complete] Using complete cache for player ${playerId}`);
+          return JSON.parse(cachedComplete);
+        }
+      } catch (err) {
+        console.warn("Failed to read complete cache:", err);
+      }
+
+      // Fetch all weeks data
+      console.log(`[Complete] Building complete data for player ${playerId}`);
+      const allWeeksData = await fetchMultipleWeeksWithCache(
+        Array.from({ length: CONFIG.ACTIVITY.totalWeeks }, (_, i) => i + 1)
+      );
+
+      // Calculate complete cumulative data with progressive stats
+      const completeData = googleSheetsAPI.calculatePlayerCumulative(
+        allWeeksData,
+        playerId
+      );
+
+      // Cache the complete data (permanent after activity ends)
+      safeSetItem(completeCacheKey, JSON.stringify(completeData));
+      console.log(`[Complete] Cached complete data for player ${playerId}`);
+
+      return completeData;
+    },
+    [fetchMultipleWeeksWithCache]
+  );
+
   const loadWeekRankings = useCallback(
     async (weekNumber, forceRefresh = false) => {
       const cacheKey = `lodibet_sheet_week_${weekNumber}`;
@@ -121,7 +222,12 @@ const BettingRankLodibet = () => {
           const cachedTime = localStorage.getItem(cacheTimeKey);
 
           if (cachedData && cachedTime && isSheetCacheValid(cachedTime)) {
-            setRankings(JSON.parse(cachedData));
+            const weekResult = JSON.parse(cachedData);
+            // Support both old cache (array) and new cache (object with rankings)
+            const rankings = Array.isArray(weekResult)
+              ? weekResult
+              : weekResult.rankings;
+            setRankings(rankings);
             setLoading(false);
             console.log(
               `Using cached Sheet data for week ${weekNumber}, updated: ${new Date(
@@ -156,8 +262,8 @@ const BettingRankLodibet = () => {
 
         setRankings(result.rankings);
 
-        // Save to cache
-        safeSetItem(cacheKey, JSON.stringify(result.rankings));
+        // Save complete result to cache (including totalBetAmount for cumulative calculations)
+        safeSetItem(cacheKey, JSON.stringify(result));
         safeSetItem(cacheTimeKey, Date.now().toString());
       } catch (err) {
         console.error("Failed to load rankings:", err);
@@ -228,7 +334,11 @@ const BettingRankLodibet = () => {
               cachedWeekTime &&
               isSheetCacheValid(cachedWeekTime)
             ) {
-              weekRankings = JSON.parse(cachedWeekData);
+              const weekResult = JSON.parse(cachedWeekData);
+              // Support both old cache (array) and new cache (object with rankings)
+              weekRankings = Array.isArray(weekResult)
+                ? weekResult
+                : weekResult.rankings;
               console.log(`Using cached data for week ${week}`);
             } else {
               const result = await googleSheetsAPI.fetchWeekRankings(
@@ -238,22 +348,20 @@ const BettingRankLodibet = () => {
               );
               weekRankings = result.rankings;
 
-              // Cache the week data
-              safeSetItem(weekCacheKey, JSON.stringify(weekRankings));
+              // Cache the complete result
+              safeSetItem(weekCacheKey, JSON.stringify(result));
               safeSetItem(weekCacheTimeKey, Date.now().toString());
             }
 
-            // Accumulate points for each player
+            // Accumulate bet for each player
             weekRankings.forEach((player) => {
               if (!playerTotals[player.playerId]) {
                 playerTotals[player.playerId] = {
                   playerId: player.playerId,
                   maskedPlayerId: player.maskedPlayerId,
-                  totalPoints: 0,
                   totalBet: 0,
                 };
               }
-              playerTotals[player.playerId].totalPoints += player.points;
               playerTotals[player.playerId].totalBet += player.betAmount;
             });
           }
@@ -264,10 +372,33 @@ const BettingRankLodibet = () => {
           CONFIG.ACTIVITY.totalWeeks *
           GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[1].pointsPool;
 
-        // Convert to array and sort by total points, take only top 10
-        const allRankings = Object.values(playerTotals).sort(
-          (a, b) => b.totalPoints - a.totalPoints
+        // Calculate total bet amount across all players
+        const allPlayersTotalBet = Object.values(playerTotals).reduce(
+          (sum, player) => sum + player.totalBet,
+          0
         );
+
+        // Calculate cumulative points and percentage based on cumulative bet ratio
+        const allRankings = Object.values(playerTotals)
+          .map((player) => {
+            const cumulativePercentage =
+              allPlayersTotalBet > 0
+                ? (player.totalBet / allPlayersTotalBet) * 100
+                : 0;
+            const cumulativePoints =
+              allPlayersTotalBet > 0
+                ? (player.totalBet / allPlayersTotalBet) * totalPrizePool
+                : 0;
+
+            return {
+              playerId: player.playerId,
+              maskedPlayerId: player.maskedPlayerId,
+              totalBet: player.totalBet,
+              totalPoints: cumulativePoints,
+              percentage: cumulativePercentage,
+            };
+          })
+          .sort((a, b) => b.totalPoints - a.totalPoints);
 
         const totalRankings = allRankings
           .slice(0, 10) // Only take top 10
@@ -277,9 +408,7 @@ const BettingRankLodibet = () => {
             maskedPlayerId: player.maskedPlayerId,
             betAmount: player.totalBet,
             points: player.totalPoints,
-            percentage: parseFloat(
-              ((player.totalPoints / totalPrizePool) * 100).toFixed(2)
-            ),
+            percentage: parseFloat(player.percentage.toFixed(2)),
           }));
 
         console.log(
@@ -322,9 +451,12 @@ const BettingRankLodibet = () => {
   const handlePlayerQuery = async (playerId, weekToQuery = currentWeek) => {
     setCurrentPlayerId(playerId); // Save player ID for week changes
     try {
+      // Check if activity has ended
+      const activityEnded = isActivityEnded();
+
       // Always query current week by default
-      // Check if selected week is the current week
-      const isCurrentWeek = weekToQuery === currentWeek;
+      // Check if selected week is the current week AND activity is still ongoing
+      const isCurrentWeek = weekToQuery === currentWeek && !activityEnded;
 
       if (isCurrentWeek) {
         // ==== Current Week: Use API for real-time data ====
@@ -346,7 +478,11 @@ const BettingRankLodibet = () => {
         const cachedTime = localStorage.getItem(cacheTimeKey);
 
         if (cachedData && cachedTime && isSheetCacheValid(cachedTime)) {
-          currentWeekRankings = JSON.parse(cachedData);
+          const weekResult = JSON.parse(cachedData);
+          // Support both old cache (array) and new cache (object with rankings)
+          currentWeekRankings = Array.isArray(weekResult)
+            ? weekResult
+            : weekResult.rankings;
           console.log(
             `[Search] Using cached Sheet data for week ${weekToQuery} (shared with rank block)`
           );
@@ -357,7 +493,7 @@ const BettingRankLodibet = () => {
             currentWeekPeriod.pointsPool
           );
           currentWeekRankings = result.rankings;
-          safeSetItem(cacheKey, JSON.stringify(currentWeekRankings));
+          safeSetItem(cacheKey, JSON.stringify(result));
           safeSetItem(cacheTimeKey, Date.now().toString());
           console.log(`[Search] Cached Sheet data for week ${weekToQuery}`);
         }
@@ -521,8 +657,7 @@ const BettingRankLodibet = () => {
               );
 
               // Reuse individual week caches instead of multi-week cache
-              const allWeeksData = await googleSheetsAPI.fetchMultipleWeeks(
-                GOOGLE_SHEETS_CONFIG.SHEET_ID,
+              const allWeeksData = await fetchMultipleWeeksWithCache(
                 previousWeeks
               );
 
@@ -595,40 +730,132 @@ const BettingRankLodibet = () => {
         });
       } else {
         // ==== Historical Week: Use Google Sheets data ====
-        const playerRank = googleSheetsAPI.findPlayerRank(rankings, playerId);
 
-        if (!playerRank) {
-          alert(`🎄 Oops! No Points Yet. Please check your ID again!`);
-          setPlayerResult(null);
-          return;
-        }
+        // If activity has ended, use complete cache for all weeks
+        if (activityEnded) {
+          const completeData = await fetchPlayerCompleteData(playerId);
 
-        // Fetch cumulative data from all weeks up to selected week
-        try {
-          const weeksToFetch = Array.from(
-            { length: weekToQuery },
-            (_, i) => i + 1
+          // Find the week data
+          const weekData = completeData.weeklyDetails.find(
+            (w) => w.week === weekToQuery
           );
 
-          // Reuse individual week caches instead of multi-week cache
-          const allWeeksData = await googleSheetsAPI.fetchMultipleWeeks(
-            GOOGLE_SHEETS_CONFIG.SHEET_ID,
-            weeksToFetch
+          if (!weekData) {
+            alert(`🎄 Oops! No Points Yet. Please check your ID again!`);
+            setPlayerResult(null);
+            return;
+          }
+
+          // Extract week-specific and cumulative data
+          const weeklyDetailsUpToQuery = completeData.weeklyDetails.slice(
+            0,
+            weekToQuery
           );
 
-          const cumulative = googleSheetsAPI.calculatePlayerCumulative(
-            allWeeksData,
-            playerId
+          // Calculate best ranks up to the queried week
+          const bestRankUpToQuery = Math.min(
+            ...weeklyDetailsUpToQuery.filter((w) => w.rank).map((w) => w.rank)
+          );
+          const bestCumulativeRankUpToQuery = Math.min(
+            ...weeklyDetailsUpToQuery
+              .filter((w) => w.cumulativeRank)
+              .map((w) => w.cumulativeRank)
           );
 
           setPlayerResult({
-            ...playerRank,
-            cumulative,
+            rank: weekData.rank,
+            betAmount: weekData.betAmount,
+            points: weekData.points,
+            percentage: weekData.percentage,
+            cumulative: {
+              totalBet: weekData.cumulativeBet,
+              totalPoints: weekData.cumulativePoints,
+              bestRank: bestRankUpToQuery,
+              bestCumulativeRank: bestCumulativeRankUpToQuery,
+              // Keep all cumulative fields in weeklyDetails
+              weeklyDetails: weeklyDetailsUpToQuery,
+              participatedWeeks: weeklyDetailsUpToQuery.filter(
+                (w) => w.betAmount > 0
+              ).length,
+            },
           });
-        } catch (err) {
-          // If cumulative fetch fails, just show current week data
-          console.warn("Failed to fetch cumulative data:", err);
-          setPlayerResult(playerRank);
+        } else {
+          // Activity ongoing - First, ensure we have the correct week's data (not from rankings state)
+          const weekGid = GOOGLE_SHEETS_CONFIG.WEEK_GIDS[weekToQuery];
+          const weekPeriod = GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[weekToQuery];
+
+          if (!weekGid || !weekPeriod) {
+            alert(`Week ${weekToQuery} configuration not found`);
+            return;
+          }
+
+          // Check cache for this week's data
+          const cacheKey = `lodibet_sheet_week_${weekToQuery}`;
+          const cacheTimeKey = `lodibet_sheet_time_week_${weekToQuery}`;
+
+          let weekRankings;
+          const cachedData = localStorage.getItem(cacheKey);
+          const cachedTime = localStorage.getItem(cacheTimeKey);
+
+          if (cachedData && cachedTime && isSheetCacheValid(cachedTime)) {
+            const weekResult = JSON.parse(cachedData);
+            // Support both old cache (array) and new cache (object with rankings)
+            weekRankings = Array.isArray(weekResult)
+              ? weekResult
+              : weekResult.rankings;
+            console.log(`[Search] Using cached data for week ${weekToQuery}`);
+          } else {
+            const result = await googleSheetsAPI.fetchWeekRankings(
+              GOOGLE_SHEETS_CONFIG.SHEET_ID,
+              weekGid,
+              weekPeriod.pointsPool
+            );
+            weekRankings = result.rankings;
+            safeSetItem(cacheKey, JSON.stringify(result));
+            safeSetItem(cacheTimeKey, Date.now().toString());
+            console.log(
+              `[Search] Fetched and cached data for week ${weekToQuery}`
+            );
+          }
+
+          // Find player in this week's rankings
+          const playerRank = googleSheetsAPI.findPlayerRank(
+            weekRankings,
+            playerId
+          );
+
+          if (!playerRank) {
+            alert(`🎄 Oops! No Points Yet. Please check your ID again!`);
+            setPlayerResult(null);
+            return;
+          }
+
+          // Fetch cumulative data from all weeks up to selected week
+          try {
+            const weeksToFetch = Array.from(
+              { length: weekToQuery },
+              (_, i) => i + 1
+            );
+
+            // Reuse individual week caches instead of multi-week cache
+            const allWeeksData = await fetchMultipleWeeksWithCache(
+              weeksToFetch
+            );
+
+            const cumulative = googleSheetsAPI.calculatePlayerCumulative(
+              allWeeksData,
+              playerId
+            );
+
+            setPlayerResult({
+              ...playerRank,
+              cumulative,
+            });
+          } catch (err) {
+            // If cumulative fetch fails, just show current week data
+            console.warn("Failed to fetch cumulative data:", err);
+            setPlayerResult(playerRank);
+          }
         }
       }
 
@@ -650,8 +877,11 @@ const BettingRankLodibet = () => {
     setIsLoadingDialogWeek(true);
 
     try {
-      // Check if selected week is the current week
-      const isCurrentWeek = newWeek === currentWeek;
+      // Check if activity has ended
+      const activityEnded = isActivityEnded();
+
+      // Check if selected week is the current week AND activity is still ongoing
+      const isCurrentWeek = newWeek === currentWeek && !activityEnded;
 
       if (isCurrentWeek) {
         // ==== Current Week: Use API for real-time data ====
@@ -673,7 +903,11 @@ const BettingRankLodibet = () => {
         const cachedTime = localStorage.getItem(cacheTimeKey);
 
         if (cachedData && cachedTime && isSheetCacheValid(cachedTime)) {
-          currentWeekRankings = JSON.parse(cachedData);
+          const weekResult = JSON.parse(cachedData);
+          // Support both old cache (array) and new cache (object with rankings)
+          currentWeekRankings = Array.isArray(weekResult)
+            ? weekResult
+            : weekResult.rankings;
           console.log(
             `Using cached Sheet data for week ${newWeek} (shared with rank block)`
           );
@@ -684,7 +918,7 @@ const BettingRankLodibet = () => {
             currentWeekPeriod.pointsPool
           );
           currentWeekRankings = result.rankings;
-          safeSetItem(cacheKey, JSON.stringify(currentWeekRankings));
+          safeSetItem(cacheKey, JSON.stringify(result));
           safeSetItem(cacheTimeKey, Date.now().toString());
         }
 
@@ -849,8 +1083,7 @@ const BettingRankLodibet = () => {
               );
 
               // Reuse individual week caches instead of multi-week cache
-              const allWeeksData = await googleSheetsAPI.fetchMultipleWeeks(
-                GOOGLE_SHEETS_CONFIG.SHEET_ID,
+              const allWeeksData = await fetchMultipleWeeksWithCache(
                 previousWeeks
               );
 
@@ -921,99 +1154,181 @@ const BettingRankLodibet = () => {
         });
       } else {
         // ==== Historical Week: Use Google Sheets data ====
-        // Check if week GID exists
-        const weekGid = GOOGLE_SHEETS_CONFIG.WEEK_GIDS[newWeek];
-        if (weekGid === undefined) {
-          alert(
-            `Week ${newWeek} data is not available yet. Please try again later.`
+
+        // If activity has ended, use complete cache for all weeks
+        if (activityEnded) {
+          const completeData = await fetchPlayerCompleteData(currentPlayerId);
+
+          // Find the week data
+          const weekData = completeData.weeklyDetails.find(
+            (w) => w.week === newWeek
           );
-          setIsLoadingDialogWeek(false);
-          return;
-        }
 
-        // Check cache first (shared with rank block - daily cache)
-        const cacheKey = `lodibet_sheet_week_${newWeek}`;
-        const cacheTimeKey = `lodibet_sheet_time_week_${newWeek}`;
-
-        let weekRankings;
-        const cachedData = localStorage.getItem(cacheKey);
-        const cachedTime = localStorage.getItem(cacheTimeKey);
-
-        if (cachedData && cachedTime && isSheetCacheValid(cachedTime)) {
-          weekRankings = JSON.parse(cachedData);
-          console.log(
-            `Using cached Sheet data for week ${newWeek} (shared with rank block)`
+          const weeklyDetailsUpToQuery = completeData.weeklyDetails.slice(
+            0,
+            newWeek
           );
-        } else {
-          const result = await googleSheetsAPI.fetchWeekRankings(
-            GOOGLE_SHEETS_CONFIG.SHEET_ID,
-            weekGid,
-            GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[newWeek].pointsPool
+
+          // Calculate best ranks up to the queried week
+          const ranksUpToQuery = weeklyDetailsUpToQuery.filter(
+            (w) => w.rank && w.rank !== null
           );
-          weekRankings = result.rankings;
-          safeSetItem(cacheKey, JSON.stringify(weekRankings));
-          safeSetItem(cacheTimeKey, Date.now().toString());
-        }
-
-        // Find player in this week's rankings
-        const playerRank = googleSheetsAPI.findPlayerRank(
-          weekRankings,
-          currentPlayerId
-        );
-
-        // Check cache for cumulative data (permanent cache for historical weeks)
-        const cumulativeCacheKey = `lodibet_player_cumulative_${currentPlayerId}_${newWeek}`;
-
-        let cumulativeData = null;
-
-        // Try to get cumulative data from cache (no time check - permanent cache)
-        const cachedCumulative = localStorage.getItem(cumulativeCacheKey);
-
-        if (cachedCumulative) {
-          cumulativeData = JSON.parse(cachedCumulative);
-          console.log(
-            `Using cached cumulative data for ${currentPlayerId} week ${newWeek} (permanent cache)`
+          const cumulativeRanksUpToQuery = weeklyDetailsUpToQuery.filter(
+            (w) => w.cumulativeRank
           );
-        } else {
-          // Fetch cumulative data from all weeks up to selected week
-          try {
-            const weeksToFetch = Array.from(
-              { length: newWeek },
-              (_, i) => i + 1
-            );
 
-            // Reuse individual week caches instead of multi-week cache
-            const allWeeksData = await googleSheetsAPI.fetchMultipleWeeks(
-              GOOGLE_SHEETS_CONFIG.SHEET_ID,
-              weeksToFetch
-            );
+          const bestRankUpToQuery =
+            ranksUpToQuery.length > 0
+              ? Math.min(...ranksUpToQuery.map((w) => w.rank))
+              : null;
+          const bestCumulativeRankUpToQuery =
+            cumulativeRanksUpToQuery.length > 0
+              ? Math.min(
+                  ...cumulativeRanksUpToQuery.map((w) => w.cumulativeRank)
+                )
+              : null;
 
-            cumulativeData = googleSheetsAPI.calculatePlayerCumulative(
-              allWeeksData,
-              currentPlayerId
-            );
-
-            // Cache the cumulative result (permanent - no time key needed)
-            safeSetItem(cumulativeCacheKey, JSON.stringify(cumulativeData));
-          } catch (err) {
-            console.warn("Failed to fetch cumulative data:", err);
+          if (!weekData || weekData.betAmount === 0) {
+            // Player没有参与这一周，但仍显示结果（rank为null或 "-"）
+            setPlayerResult({
+              rank: "-",
+              playerId: currentPlayerId,
+              maskedPlayerId: googleSheetsAPI.maskPlayerId(currentPlayerId),
+              betAmount: 0,
+              percentage: "0.00",
+              points: 0,
+              cumulative: {
+                totalBet: weekData ? weekData.cumulativeBet : 0,
+                totalPoints: weekData ? weekData.cumulativePoints : 0,
+                bestRank: bestRankUpToQuery,
+                bestCumulativeRank: bestCumulativeRankUpToQuery,
+                // Keep all cumulative fields in weeklyDetails
+                weeklyDetails: weeklyDetailsUpToQuery,
+                participatedWeeks: weeklyDetailsUpToQuery.filter(
+                  (w) => w.betAmount > 0
+                ).length,
+              },
+            });
+          } else {
+            // Extract week-specific and cumulative data
+            setPlayerResult({
+              rank: weekData.rank,
+              playerId: currentPlayerId,
+              maskedPlayerId: googleSheetsAPI.maskPlayerId(currentPlayerId),
+              betAmount: weekData.betAmount,
+              points: weekData.points,
+              percentage: weekData.percentage,
+              cumulative: {
+                totalBet: weekData.cumulativeBet,
+                totalPoints: weekData.cumulativePoints,
+                bestRank: bestRankUpToQuery,
+                bestCumulativeRank: bestCumulativeRankUpToQuery,
+                // Keep all cumulative fields in weeklyDetails
+                weeklyDetails: weeklyDetailsUpToQuery,
+                participatedWeeks: weeklyDetailsUpToQuery.filter(
+                  (w) => w.betAmount > 0
+                ).length,
+              },
+            });
           }
+        } else {
+          // Activity ongoing - Check if week GID exists
+          const weekGid = GOOGLE_SHEETS_CONFIG.WEEK_GIDS[newWeek];
+          if (weekGid === undefined) {
+            alert(
+              `Week ${newWeek} data is not available yet. Please try again later.`
+            );
+            setIsLoadingDialogWeek(false);
+            return;
+          }
+
+          // Check cache first (shared with rank block - daily cache)
+          const cacheKey = `lodibet_sheet_week_${newWeek}`;
+          const cacheTimeKey = `lodibet_sheet_time_week_${newWeek}`;
+
+          let weekRankings;
+          const cachedData = localStorage.getItem(cacheKey);
+          const cachedTime = localStorage.getItem(cacheTimeKey);
+
+          if (cachedData && cachedTime && isSheetCacheValid(cachedTime)) {
+            const weekResult = JSON.parse(cachedData);
+            // Support both old cache (array) and new cache (object with rankings)
+            weekRankings = Array.isArray(weekResult)
+              ? weekResult
+              : weekResult.rankings;
+            console.log(
+              `Using cached Sheet data for week ${newWeek} (shared with rank block)`
+            );
+          } else {
+            const result = await googleSheetsAPI.fetchWeekRankings(
+              GOOGLE_SHEETS_CONFIG.SHEET_ID,
+              weekGid,
+              GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[newWeek].pointsPool
+            );
+            weekRankings = result.rankings;
+            safeSetItem(cacheKey, JSON.stringify(result));
+            safeSetItem(cacheTimeKey, Date.now().toString());
+          }
+
+          // Find player in this week's rankings
+          const playerRank = googleSheetsAPI.findPlayerRank(
+            weekRankings,
+            currentPlayerId
+          );
+
+          // Check cache for cumulative data (permanent cache for historical weeks)
+          const cumulativeCacheKey = `lodibet_player_cumulative_${currentPlayerId}_${newWeek}`;
+
+          let cumulativeData = null;
+
+          // Try to get cumulative data from cache (no time check - permanent cache)
+          const cachedCumulative = localStorage.getItem(cumulativeCacheKey);
+
+          if (cachedCumulative) {
+            cumulativeData = JSON.parse(cachedCumulative);
+            console.log(
+              `Using cached cumulative data for ${currentPlayerId} week ${newWeek} (permanent cache)`
+            );
+          } else {
+            // Fetch cumulative data from all weeks up to selected week
+            try {
+              const weeksToFetch = Array.from(
+                { length: newWeek },
+                (_, i) => i + 1
+              );
+
+              // Reuse individual week caches instead of multi-week cache
+              const allWeeksData = await fetchMultipleWeeksWithCache(
+                weeksToFetch
+              );
+
+              cumulativeData = googleSheetsAPI.calculatePlayerCumulative(
+                allWeeksData,
+                currentPlayerId
+              );
+
+              // Cache the cumulative result (permanent - no time key needed)
+              safeSetItem(cumulativeCacheKey, JSON.stringify(cumulativeData));
+            } catch (err) {
+              console.warn("Failed to fetch cumulative data:", err);
+            }
+          }
+
+          // Always show result, even if current week has no data (show 0)
+          const currentWeekData = playerRank || {
+            rank: "-",
+            playerId: currentPlayerId,
+            maskedPlayerId: googleSheetsAPI.maskPlayerId(currentPlayerId),
+            betAmount: 0,
+            percentage: 0,
+            points: 0,
+          };
+
+          setPlayerResult({
+            ...currentWeekData,
+            cumulative: cumulativeData,
+          });
         }
-
-        // Always show result, even if current week has no data (show 0)
-        const currentWeekData = playerRank || {
-          rank: "-",
-          playerId: currentPlayerId,
-          maskedPlayerId: googleSheetsAPI.maskPlayerId(currentPlayerId),
-          betAmount: 0,
-          percentage: 0,
-          points: 0,
-        };
-
-        setPlayerResult({
-          ...currentWeekData,
-          cumulative: cumulativeData,
-        });
       }
     } catch (err) {
       console.error("Failed to change week:", err);
@@ -1218,6 +1533,7 @@ const BettingRankLodibet = () => {
           weekPeriods={GOOGLE_SHEETS_CONFIG.WEEK_PERIODS}
           onTotalRankingClick={handleTotalRankingClick}
           isTotalRanking={isTotalRanking}
+          isActivityEnded={isActivityEnded()}
         />
 
         {/* Prize List */}
@@ -1246,6 +1562,7 @@ const BettingRankLodibet = () => {
         totalWeeks={CONFIG.ACTIVITY.totalWeeks}
         isLoadingWeek={isLoadingDialogWeek}
         currentWeek={currentWeek}
+        isActivityEnded={isActivityEnded()}
       />
 
       {/* Back to Game Floating Button */}

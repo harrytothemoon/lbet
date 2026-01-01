@@ -12,6 +12,7 @@ const PlayerResultDialog = ({
   totalWeeks,
   isLoadingWeek,
   currentWeek,
+  isActivityEnded,
 }) => {
   const { SITE } = config;
   const [dragOffset, setDragOffset] = useState(0);
@@ -318,7 +319,7 @@ const PlayerResultDialog = ({
                         <span className={isCurrentWeek ? "font-bold" : ""}>
                           Week {week}
                         </span>
-                        {isCurrentWeek && (
+                        {isCurrentWeek && !isActivityEnded && (
                           <span
                             className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[10px] font-bold rounded animate-pulse uppercase"
                             style={{
@@ -483,8 +484,18 @@ const PlayerResultDialog = ({
                       </div>
                     </div>
                     <div className="text-base sm:text-xl font-bold text-purple-400">
-                      {/* Calculate overall share if available */}
-                      {playerData.percentage}%
+                      {/* Display cumulative percentage */}
+                      {(() => {
+                        const currentWeekData =
+                          playerData.cumulative.weeklyDetails?.find(
+                            (w) => w.week === weekNumber
+                          );
+                        return (
+                          currentWeekData?.cumulativePercentage ||
+                          playerData.percentage
+                        );
+                      })()}
+                      %
                     </div>
                   </div>
 
@@ -497,22 +508,42 @@ const PlayerResultDialog = ({
                       </div>
                     </div>
                     <div className="text-base sm:text-xl font-bold text-green-400">
-                      {formatNumber(
-                        Math.floor(playerData.cumulative.totalPoints)
-                      )}
+                      {(() => {
+                        const currentWeekData =
+                          playerData.cumulative.weeklyDetails?.find(
+                            (w) => w.week === weekNumber
+                          );
+                        return formatNumber(
+                          Math.floor(
+                            currentWeekData?.cumulativePoints ||
+                              playerData.cumulative.totalPoints
+                          )
+                        );
+                      })()}
                     </div>
                   </div>
 
-                  {/* Best Rank */}
+                  {/* Cumulative Rank */}
                   <div className="p-4 sm:p-5 bg-gradient-to-br from-yellow-900/40 to-yellow-800/20 rounded-xl border-2 border-yellow-500/30">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg sm:text-xl">🥇</span>
+                      <span className="text-lg sm:text-xl">🏆</span>
                       <div className="text-[10px] sm:text-xs text-yellow-300 font-semibold">
-                        Best Rank
+                        Cumulative Rank
                       </div>
                     </div>
                     <div className="text-base sm:text-xl font-bold text-yellow-400">
-                      #{playerData.cumulative.bestRank}
+                      #
+                      {(() => {
+                        const currentWeekData =
+                          playerData.cumulative.weeklyDetails?.find(
+                            (w) => w.week === weekNumber
+                          );
+                        return (
+                          currentWeekData?.cumulativeRank ||
+                          playerData.rank ||
+                          "-"
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

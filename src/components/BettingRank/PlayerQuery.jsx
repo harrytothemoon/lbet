@@ -199,7 +199,7 @@ const PlayerQuery = ({ config, onQuery }) => {
       </CardContent>
 
       {/* Add shimmer animation */}
-      <style jsx>{`
+      <style>{`
         @keyframes shimmer {
           0% {
             transform: translateX(-100%) skewX(-12deg);

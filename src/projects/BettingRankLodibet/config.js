@@ -156,7 +156,9 @@ export const GOOGLE_SHEETS_CONFIG = {
 // Get current week number based on current time
 export const getCurrentWeek = () => {
   const now = new Date();
-  for (let week = 1; week <= 6; week++) {
+
+  // Check if we're in any active week
+  for (let week = 1; week <= CONFIG.ACTIVITY.totalWeeks; week++) {
     const period = GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[week];
     const start = new Date(period.start);
     const end = new Date(period.end);
@@ -164,7 +166,19 @@ export const getCurrentWeek = () => {
       return week;
     }
   }
-  return 1; // Default to week 1
+
+  // If activity has ended, return last week
+  const lastWeek = CONFIG.ACTIVITY.totalWeeks;
+  const lastWeekPeriod = GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[lastWeek];
+  if (lastWeekPeriod) {
+    const activityEndTime = new Date(lastWeekPeriod.end);
+    if (now > activityEndTime) {
+      return lastWeek; // Activity ended, show last week
+    }
+  }
+
+  // Activity hasn't started yet, return week 1
+  return 1;
 };
 
 // Get week status
@@ -181,4 +195,16 @@ export const getWeekStatus = (weekNumber) => {
   if (now > end) return "ended"; // Ended
 
   return "unknown";
+};
+
+// Check if entire activity has ended
+export const isActivityEnded = () => {
+  const now = new Date();
+  const lastWeek = CONFIG.ACTIVITY.totalWeeks;
+  const lastWeekPeriod = GOOGLE_SHEETS_CONFIG.WEEK_PERIODS[lastWeek];
+
+  if (!lastWeekPeriod) return false;
+
+  const activityEndTime = new Date(lastWeekPeriod.end);
+  return now > activityEndTime;
 };
